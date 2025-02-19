@@ -233,10 +233,14 @@ see the execution plan of your query.
 
 auto BustubInstance::ExecuteSql(const std::string &sql, ResultWriter &writer,
                                 std::shared_ptr<CheckOptions> check_options) -> bool {
+  // 检查是否在现有事务中执行
   bool is_local_txn = current_txn_ != nullptr;
+  // 获取事务对象：如果在现有事务中则使用当前事务，否则开始新事务
   auto *txn = is_local_txn ? current_txn_ : txn_manager_->Begin();
   try {
+    // 执行SQL语句
     auto result = ExecuteSqlTxn(sql, writer, txn, std::move(check_options));
+    // 如果是新建的事务，在执行完成后提交
     if (!is_local_txn) {
       auto res = txn_manager_->Commit(txn);
       if (!res) {
@@ -245,6 +249,7 @@ auto BustubInstance::ExecuteSql(const std::string &sql, ResultWriter &writer,
     }
     return result;
   } catch (bustub::Exception &ex) {
+    // 发生异常时回滚事务
     txn_manager_->Abort(txn);
     current_txn_ = nullptr;
     throw ex;
@@ -253,25 +258,30 @@ auto BustubInstance::ExecuteSql(const std::string &sql, ResultWriter &writer,
 
 auto BustubInstance::ExecuteSqlTxn(const std::string &sql, ResultWriter &writer, Transaction *txn,
                                    std::shared_ptr<CheckOptions> check_options) -> bool {
+  // 处理以反斜杠开头的元命令（类似psql中的命令）
   if (!sql.empty() && sql[0] == '\\') {
-    // Internal meta-commands, like in `psql`.
+    // 显示所有表
     if (sql == "\\dt") {
       CmdDisplayTables(writer);
       return true;
     }
+    // 显示所有索引
     if (sql == "\\di") {
       CmdDisplayIndices(writer);
       return true;
     }
+    // 显示帮助信息
     if (sql == "\\help") {
       CmdDisplayHelp(writer);
       return true;
     }
+    // 调试MVCC（多版本并发控制）
     if (StringUtil::StartsWith(sql, "\\dbgmvcc")) {
       auto split = StringUtil::Split(sql, " ");
       CmdDbgMvcc(split, writer);
       return true;
     }
+    // 事务相关命令
     if (StringUtil::StartsWith(sql, "\\txn")) {
       auto split = StringUtil::Split(sql, " ");
       CmdTxn(split, writer);
@@ -282,18 +292,22 @@ auto BustubInstance::ExecuteSqlTxn(const std::string &sql, ResultWriter &writer,
 
   bool is_successful = true;
 
+  // 解析SQL语句
   std::shared_lock<std::shared_mutex> l(catalog_lock_);
   bustub::Binder binder(*catalog_);
   binder.ParseAndSave(sql);
   l.unlock();
 
+  // 处理所有语句
   for (auto *stmt : binder.statement_nodes_) {
     auto statement = binder.BindStatement(stmt);
 
     bool is_delete = false;
 
+    // 根据语句类型进行处理
     switch (statement->type_) {
       case StatementType::CREATE_STATEMENT: {
+        // 处理CREATE语句
         const auto &create_stmt = dynamic_cast<const CreateStatement &>(*statement);
         HandleCreateStatement(txn, create_stmt, writer);
         continue;
@@ -332,17 +346,17 @@ auto BustubInstance::ExecuteSqlTxn(const std::string &sql, ResultWriter &writer,
 
     std::shared_lock<std::shared_mutex> l(catalog_lock_);
 
-    // Plan the query.
+    // 查询计划生成
     bustub::Planner planner(*catalog_);
     planner.PlanQuery(*statement);
 
-    // Optimize the query.
+    // 查询优化
     bustub::Optimizer optimizer(*catalog_, session_variables_);
     auto optimized_plan = optimizer.Optimize(planner.plan_);
 
     l.unlock();
 
-    // Execute the query.
+    // 执行查询
     auto exec_ctx = MakeExecutorContext(txn, is_delete);
     if (check_options != nullptr) {
       exec_ctx->InitCheckOptions(std::move(check_options));
@@ -350,10 +364,10 @@ auto BustubInstance::ExecuteSqlTxn(const std::string &sql, ResultWriter &writer,
     std::vector<Tuple> result_set{};
     is_successful &= execution_engine_->Execute(optimized_plan, &result_set, txn, exec_ctx.get());
 
-    // Return the result set as a vector of string.
+    // 输出结果集
     auto schema = planner.plan_->OutputSchema();
 
-    // Generate header for the result set.
+    // 生成结果集表头
     writer.BeginTable(false);
     writer.BeginHeader();
     for (const auto &column : schema.GetColumns()) {
@@ -361,7 +375,7 @@ auto BustubInstance::ExecuteSqlTxn(const std::string &sql, ResultWriter &writer,
     }
     writer.EndHeader();
 
-    // Transforming result set into strings.
+    // 将结果集转换为字符串并输出
     for (const auto &tuple : result_set) {
       writer.BeginRow();
       for (uint32_t i = 0; i < schema.GetColumnCount(); i++) {
