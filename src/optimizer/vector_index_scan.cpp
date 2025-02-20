@@ -102,7 +102,12 @@ auto Optimizer::OptimizeAsVectorIndexScan(const AbstractPlanNodeRef &plan) -> Ab
     limit = topn_node->GetN();
      // 获取基准向量
     std::vector<AbstractExpressionRef> array_children;
-    array_children.push_back(topn_node->GetOrderBy()[0].second); // 假设你从 OrderBy 中获取了正确的表达式
+    //auto vector_node = std::dynamic_pointer_cast<VectorExpression>(topn_node->GetOrderBy()[0].second);
+    //Value value((TypeId::VECTOR, topn_node->GetOrderBy()[0].second->children_[0]));
+    //AbstractExpressionRef value_node = std::make_shared<ConstantValueExpression>();
+    for(size_t i = 0; i <= topn_node->GetOrderBy()[0].second->children_.size() ;i++){
+      array_children.push_back(topn_node->GetOrderBy()[0].second->children_[0]->GetChildAt(i));
+    }
     base_vector = std::make_shared<ArrayExpression>(array_children);
   }
   else

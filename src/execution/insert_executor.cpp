@@ -35,9 +35,7 @@ InsertExecutor::InsertExecutor(ExecutorContext *exec_ctx, const InsertPlanNode *
     // 获取目标表的堆文件对象，用于实际的数据插入操作
     table_heap_ = exec_ctx->GetCatalog()->GetTable(plan->GetTableOid())->table_.get();
    
-    // TODO: 初始化表的索引列表，用于后续更新索引
-    //indexes_ = exec_ctx->GetCatalog()->GetIndex();
-    
+    // TODO: 初始化表的索引列表，用于后续更新索引    
     // 初始化状态标记，表示是否已经发出了结果
     emitted_ = false;
 }
@@ -75,6 +73,19 @@ auto InsertExecutor::Next(Tuple *tuple, RID *rid) -> bool {
                 
                 // 检查插入是否成功
                 if (inserted_rid.has_value()) {
+                    auto table_indexes = exec_ctx_->GetCatalog()->GetTableIndexes(
+                    exec_ctx_->GetCatalog()->GetTable(plan_->GetTableOid())->name_);
+                    *rid = inserted_rid.value();
+                    for (auto &index_info : table_indexes) {
+                    // 插入到索引中
+                        if(index_info->index_type_ == IndexType::VectorIVFFlatIndex) {
+                            auto vector_index = dynamic_cast<IVFFlatIndex*>(index_info->index_.get());
+                            vector_index->InsertVectorEntry(tuple->GetValue(&child_executor_->GetOutputSchema(),0).GetVector(), *rid);
+                        } else if(index_info->index_type_ == IndexType::VectorHNSWIndex) {
+                            auto vector_index = dynamic_cast<HNSWIndex*>(index_info->index_.get());
+                            vector_index->InsertVectorEntry(tuple->GetValue(&child_executor_->GetOutputSchema(),0).GetVector(), *rid);
+                        }   
+                    }
                     return true;
                 }
                 return false;
