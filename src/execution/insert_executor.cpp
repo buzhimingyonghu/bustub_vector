@@ -36,7 +36,7 @@ InsertExecutor::InsertExecutor(ExecutorContext *exec_ctx, const InsertPlanNode *
     table_heap_ = exec_ctx->GetCatalog()->GetTable(plan->GetTableOid())->table_.get();
    
     // TODO: 初始化表的索引列表，用于后续更新索引
-    //indexes_ = exec_ctx->GetCatalog()->GetTableIndexes(name);
+    //indexes_ = exec_ctx->GetCatalog()->GetIndex();
     
     // 初始化状态标记，表示是否已经发出了结果
     emitted_ = false;
